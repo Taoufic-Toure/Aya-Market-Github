@@ -1,0 +1,1 @@
+"""Regroupe les routeurs FastAPI."""

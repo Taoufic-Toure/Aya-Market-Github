@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  body {
+    background-color: #f9fafb;
+  }
+  .font-display {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-[#1D9E75] text-white rounded-2xl font-semibold transition-all active:scale-95 hover:bg-[#178a64] min-h-[48px] px-5 flex items-center justify-center gap-2 shadow-sm;
+  }
+
+  .btn-accent, .btn-secondary {
+    @apply bg-[#EF9F27] text-white rounded-2xl font-semibold transition-all active:scale-95 hover:bg-[#d97706] min-h-[48px] px-5 flex items-center justify-center gap-2 shadow-sm;
+  }
+
+  .btn-outline {
+    @apply border-2 border-[#1D9E75] text-[#1D9E75] bg-white rounded-2xl font-semibold transition-all active:scale-95 hover:bg-[#1D9E75]/10 min-h-[48px] px-5 flex items-center justify-center gap-2;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 bg-gray-100 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1D9E75] focus:bg-white transition-all min-h-[48px];
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+@layer utilities {
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  .pb-safe {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
