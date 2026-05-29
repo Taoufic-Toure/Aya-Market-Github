@@ -11,7 +11,6 @@ from app.middleware.auth import AuthMiddleware
 from app.routes.ai import router as ai_router
 from app.routes.auth import router as auth_router
 from app.routes.health import router as health_router
-from app.routes.products import router as products_router
 from app.routes.products_db import router as products_db_router
 from app.routes.cart import router as cart_router
 from app.routes.orders import router as orders_router
@@ -42,13 +41,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.middleware("http")
-async def request_logger(request, call_next):  # type: ignore[no-untyped-def]
-    """Branche le middleware de logs HTTP."""
-    return await log_request_middleware(request, call_next)
-
-
 @app.get(
     "/",
     tags=["Root"],
@@ -71,7 +63,6 @@ async def root() -> dict[str, str]:
 
 app.include_router(auth_router)
 app.include_router(health_router)
-app.include_router(products_router)
 app.include_router(products_db_router)
 app.include_router(cart_router)
 app.include_router(orders_router)
