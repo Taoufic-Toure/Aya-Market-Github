@@ -172,15 +172,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const initSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      setAuthUser(data.session?.user ?? null);
-      await syncUser(data.session?.user ?? null);
-      setLoading(false);
-    };
+      const initSession = async () => {
+        try {
+          const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 5000)
+          );
+          const sessionPromise = supabase.auth.getSession();
+          const { data } = await Promise.race([sessionPromise, timeout]) as any;
+          setSession(data.session);
+          setAuthUser(data.session?.user ?? null);
+          await syncUser(data.session?.user ?? null);
+        } catch {
+          setSession(null);
+          setAuthUser(null);
+          setUser(null);
+        } finally {
+          setLoading(false);
+        }
+      };
 
-    initSession();
+      initSession();
 
     const {
       data: { subscription },
