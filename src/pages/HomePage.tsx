@@ -104,9 +104,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
       <div className="absolute top-0 left-0 right-0 z-30">
         <div className="px-4 pt-5 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-[#EF9F27] flex items-center justify-center font-display font-bold text-[#0f3d2e]">
-              B
-            </div>
+            <img src="/logo.png" alt="AyaMarket" className="w-9 h-9 rounded-xl object-contain" />
             <span className="font-display text-white text-lg font-bold drop-shadow">AyaMarket</span>
           </div>
           <div className="flex items-center gap-1">
