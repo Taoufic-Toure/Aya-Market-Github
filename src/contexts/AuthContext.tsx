@@ -1,7 +1,10 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { Role, User } from '../lib/database.types';
+
+const AUTH_SESSION_TIMEOUT_MS = 5000;
+const PROFILE_TIMEOUT_MS = 5000;
 
 interface RegisterPayload {
   email: string;
@@ -25,6 +28,17 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('timeout')), ms);
+  });
+
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
 
 function cleanAuthError(message: string): string {
   // Traduction minimale des erreurs Supabase les plus courantes.
@@ -55,61 +69,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async (userId: string): Promise<User | null> => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+  const fetchProfile = useCallback(async (userId: string): Promise<User | null> => {
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle(),
+        PROFILE_TIMEOUT_MS
+      );
 
-    if (error) {
+      if (error) {
+        return null;
+      }
+      return data;
+    } catch {
       return null;
     }
-    return data;
-  };
+  }, []);
 
-  const createProfileIfMissing = async (auth: SupabaseAuthUser): Promise<User | null> => {
+  const createProfileIfMissing = useCallback(async (auth: SupabaseAuthUser): Promise<User | null> => {
     const existing = await fetchProfile(auth.id);
     if (existing) return existing;
 
     const payload = buildFallbackProfile(auth);
 
-    const { data, error } = await supabase
-      .from('users')
-      .upsert(payload, { onConflict: 'id' })
-      .select('*')
-      .single();
+    try {
+      const { data, error } = await withTimeout(
+        supabase
+          .from('users')
+          .upsert(payload, { onConflict: 'id' })
+          .select('*')
+          .single(),
+        PROFILE_TIMEOUT_MS
+      );
 
-    if (error) return null;
-    return data;
-  };
-
-  const syncUser = async (currentAuthUser: SupabaseAuthUser | null) => {
-    if (!currentAuthUser) {
-      setUser(null);
-      return;
+      if (error) return null;
+      return data;
+    } catch {
+      return null;
     }
-    const profile = await createProfileIfMissing(currentAuthUser);
-    // Une session Supabase valide ne doit pas bloquer l'app si le profil public
-    // n'est pas encore disponible apres inscription ou a cause d'une policy.
-    setUser(profile ?? buildFallbackProfile(currentAuthUser));
-  };
+  }, [fetchProfile]);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (!authUser) return;
     const profile = await fetchProfile(authUser.id);
     setUser(profile ?? buildFallbackProfile(authUser));
-  };
+  }, [authUser, fetchProfile]);
 
-  const signIn = async (email: string, password: string): Promise<{ errorMessage: string | null }> => {
+  const signIn = useCallback(async (email: string, password: string): Promise<{ errorMessage: string | null }> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       return { errorMessage: cleanAuthError(error.message) };
     }
     return { errorMessage: null };
-  };
+  }, []);
 
-  const signUp = async (payload: RegisterPayload): Promise<{ errorMessage: string | null }> => {
+  const signUp = useCallback(async (payload: RegisterPayload): Promise<{ errorMessage: string | null }> => {
     const { email, password, role, nom, nomBoutique, telephone, ville } = payload;
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -158,9 +175,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return { errorMessage: null };
-  };
+  }, [createProfileIfMissing]);
 
-  const signOut = async (): Promise<{ errorMessage: string | null }> => {
+  const signOut = useCallback(async (): Promise<{ errorMessage: string | null }> => {
     const { error } = await supabase.auth.signOut();
     if (error) {
       return { errorMessage: cleanAuthError(error.message) };
@@ -169,19 +186,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthUser(null);
     setUser(null);
     return { errorMessage: null };
-  };
+  }, []);
 
   useEffect(() => {
       const initSession = async () => {
         try {
-          const timeout = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('timeout')), 5000)
+          const { data } = await withTimeout(
+            supabase.auth.getSession(),
+            AUTH_SESSION_TIMEOUT_MS
           );
-          const sessionPromise = supabase.auth.getSession();
-          const { data } = await Promise.race([sessionPromise, timeout]) as any;
           setSession(data.session);
           setAuthUser(data.session?.user ?? null);
-          await syncUser(data.session?.user ?? null);
         } catch {
           setSession(null);
           setAuthUser(null);
@@ -195,15 +210,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setAuthUser(nextSession?.user ?? null);
-      await syncUser(nextSession?.user ?? null);
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const loadUser = async () => {
+      if (!authUser) {
+        setUser(null);
+        return;
+      }
+
+      const fallback = buildFallbackProfile(authUser);
+      setUser(fallback);
+
+      try {
+        const profile = await createProfileIfMissing(authUser);
+        if (isActive && profile) setUser(profile);
+      } catch {
+        if (isActive) setUser(fallback);
+      }
+    };
+
+    loadUser();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authUser, createProfileIfMissing]);
 
   const value = useMemo<AuthContextType>(
     () => ({
@@ -216,7 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       refreshUser,
     }),
-    [session, authUser, user, loading]
+    [session, authUser, user, loading, signIn, signUp, signOut, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

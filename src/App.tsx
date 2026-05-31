@@ -28,7 +28,7 @@ import VendorAdvice from './pages/vendor/VendorAdvice';
 import VendorMessages from './pages/vendor/VendorMessages';
 import WishlistPage from './pages/WishlistPage';
 import { Download } from 'lucide-react';
-import type { Categorie } from './lib/database.types';
+import type { Categorie, Role } from './lib/database.types';
 
 type Page =
   | 'home' | 'categories' | 'category-products' | 'orders' | 'chat' | 'profile'
@@ -55,9 +55,11 @@ function AppInner() {
   const [pendingRoute, setPendingRoute] = useState<NavState | null>(null);
   const [showInstall, setShowInstall] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const { user, loading } = useAuth();
+  const { user, authUser, loading } = useAuth();
   const { showToast } = useToast();
   const { getLandingPage } = useAuthRedirect();
+  const isAuthenticated = Boolean(user || authUser);
+  const currentRole = user?.role ?? (authUser?.user_metadata?.role as Role | undefined);
 
   const AUTH_REQUIRED_PAGES: Page[] = ['orders', 'chat', 'profile', ...VENDOR_PAGES];
 
@@ -71,12 +73,12 @@ function AppInner() {
 
   const canAccess = (targetPage: Page) => {
     if (VENDOR_PAGES.includes(targetPage)) {
-      if (!user) return { allowed: false, reason: 'auth' as const };
-      if (user.role !== 'vendeur') return { allowed: false, reason: 'role' as const };
+      if (!isAuthenticated) return { allowed: false, reason: 'auth' as const };
+      if (currentRole !== 'vendeur') return { allowed: false, reason: 'role' as const };
       return { allowed: true, reason: null };
     }
 
-    if (AUTH_REQUIRED_PAGES.includes(targetPage) && !user) {
+    if (AUTH_REQUIRED_PAGES.includes(targetPage) && !isAuthenticated) {
       return { allowed: false, reason: 'auth' as const };
     }
 
@@ -107,28 +109,28 @@ function AppInner() {
     if (loading) return;
 
     // Quand l'utilisateur se connecte, on respecte d'abord la page demandée.
-    if (user && pendingRoute) {
+    if (isAuthenticated && pendingRoute) {
       const guard = canAccess(pendingRoute.page);
       if (guard.allowed) {
         setNav(pendingRoute);
       } else {
-        setPage(getLandingPage(user.role), {}, false);
+        setPage(getLandingPage(currentRole), {}, false);
       }
       setPendingRoute(null);
       return;
     }
 
     // Redirection automatique depuis la page auth.
-    if (user && nav.page === 'auth') {
-      setPage(getLandingPage(user.role), {}, false);
+    if (isAuthenticated && nav.page === 'auth') {
+      setPage(getLandingPage(currentRole), {}, false);
       return;
     }
 
     // Si l'utilisateur se déconnecte, on bloque les pages protégées.
-    if (!user && AUTH_REQUIRED_PAGES.includes(nav.page)) {
+    if (!isAuthenticated && AUTH_REQUIRED_PAGES.includes(nav.page)) {
       setPage('auth', {}, false);
     }
-  }, [user, loading, pendingRoute, nav.page]);
+  }, [isAuthenticated, currentRole, loading, pendingRoute, nav.page]);
 
   const navigate = (page: string, params: Record<string, string> = {}) => {
     const targetPage = page as Page;

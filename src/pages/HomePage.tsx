@@ -62,7 +62,7 @@ export default function HomePage({ onNavigate }: HomePageProps) {
           query,
           supabase.from('boutiques').select('id, nom, logo_url, nb_ventes').eq('actif', true).order('nb_ventes', { ascending: false }).limit(4),
         ]),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 15000))
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timeout')), 50000))
       ]);
 
       const produitsData = (produitsRes.data ?? []) as Produit[];
